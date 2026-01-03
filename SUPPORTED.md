@@ -15,7 +15,7 @@ GET https://avatar.roblox.com/v2/avatar/users/{userId}/avatar
 
 #### `groups.roblox.com`
 
-```
+```http
 GET https://groups.roblox.com/v1/users/{userId}/groups/roles
 GET https://groups.roblox.com/v1/groups/{groupId}
 GET https://groups.roblox.com/v1/groups/{groupId}/users
@@ -26,7 +26,7 @@ GET https://groups.roblox.com/v1/groups/{groupId}/roles/{roleSetId}/users
 
 #### `users.roblox.com`
 
-```
+```http
 GET https://users.roblox.com/v1/users/{userId}
 GET https://users.roblox.com/v1/users/{userId}/username-history
 POST https://users.roblox.com/v1/usernames/users
@@ -37,6 +37,6 @@ GET https://users.roblox.com/v1/users/authenticated
 
 The following undocumented user-related API endpoints are also supported.
 
-```
+```http
 GET https://apis.roblox.com/search-api/omni-search
 ```
