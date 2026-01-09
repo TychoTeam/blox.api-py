@@ -8,6 +8,7 @@ Classes to parse and transform Roblox API data.
 
 from .users import *
 from .groups import *
+from .thumbnails import *
 
 __all__ = [
     "MinimalUser",
@@ -18,4 +19,7 @@ __all__ = [
     "Role",
     "Member",
     "Membership",
+    "Thumbnail",
+    "ThumbnailState",
+    "ThumbnailType",
 ]

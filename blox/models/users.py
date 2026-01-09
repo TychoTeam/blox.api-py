@@ -13,7 +13,12 @@ if TYPE_CHECKING:
         UserOmniSearchItem,
         v1_GroupUser,
     )
-    from blox.web import WebHandler
+    from blox.web import (
+        WebHandler,
+        _AvatarFullSize,
+        _AvatarBustSize,
+        _AvatarHeadshotSize,
+    )
 
 
 class MinimalUser:
@@ -34,6 +39,7 @@ class MinimalUser:
         self._handler = handler
 
         self.id = int(id)
+        self.avatar = UserAvatar(self)
 
     @property
     def profile_link(self) -> str:
@@ -188,3 +194,145 @@ class Profile(User):
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} name={self.name}, id={self.id}, display_name={self.display_name}, created_at={self.created_at}>"
+
+
+class UserAvatar:
+    def __init__(self, user: MinimalUser):
+        self.handler = user._handler
+        self.user = user
+
+    async def get_full(
+        self,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP", "JPEG"] = "PNG",
+        size: "_AvatarFullSize" = (150, 150),
+        retry_pending: bool = True,
+    ):
+        """
+        Get the user's full avatar thumbnail.
+
+        Parameters
+        ----------
+        circular
+            Whether the generated thumbnail should be circular.
+        format
+            The thumbnail image media type.
+        size
+            The thumbnail image dimensions.
+
+            | Supported |
+            |-|
+            |`(30, 30)`|
+            |`(48, 48)`|
+            |`(60, 60)`|
+            |`(75, 75)`|
+            |`(100, 100)`|
+            |`(110, 110)`|
+            |`(140, 140)`|
+            |`(150, 150)`|
+            |`(150, 200)`|
+            |`(180, 180)`|
+            |`(250, 250)`|
+            |`(352, 352)`|
+            |`(420, 420)`|
+            |`(720, 720)`|
+        retry_pending
+            Whether to retry requests in case of pending thumbnail state.
+        """
+
+        return await self.handler.avatars.get_full(
+            self.user.id,
+            circular=circular,
+            format=format,
+            size=size,
+            retry_pending=retry_pending,
+        )
+
+    async def get_bust(
+        self,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP"] = "PNG",
+        size: "_AvatarBustSize" = (150, 150),
+        retry_pending: bool = True,
+    ):
+        """
+        Get the user's avatar bust thumbnail.
+
+        Parameters
+        ----------
+        circular
+            Whether the generated thumbnail should be circular.
+        format
+            The thumbnail image media type.
+        size
+            The thumbnail image dimensions.
+
+            | Supported |
+            |-|
+            |`(48, 48)`|
+            |`(50, 50)`|
+            |`(60, 60)`|
+            |`(75, 75)`|
+            |`(100, 100)`|
+            |`(150, 150)`|
+            |`(180, 180)`|
+            |`(352, 352)`|
+            |`(420, 420)`|
+        retry_pending
+            Whether to retry requests in case of pending thumbnail state.
+        """
+
+        return await self.handler.avatars.get_bust(
+            self.user.id,
+            circular=circular,
+            format=format,
+            size=size,
+            retry_pending=retry_pending,
+        )
+
+    async def get_headshot(
+        self,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP", "JPEG"] = "PNG",
+        size: "_AvatarHeadshotSize" = (150, 150),
+        retry_pending: bool = True,
+    ):
+        """
+        Get the user's avatar headshot thumbnail.
+
+        Parameters
+        ----------
+        circular
+            Whether the generated thumbnail should be circular.
+        format
+            The thumbnail image media type.
+        size
+            The thumbnail image dimensions.
+
+            | Supported |
+            |-|
+            |`(48, 48)`|
+            |`(50, 50)`|
+            |`(60, 60)`|
+            |`(75, 75)`|
+            |`(100, 100)`|
+            |`(110, 110)`|
+            |`(150, 150)`|
+            |`(180, 180)`|
+            |`(352, 352)`|
+            |`(420, 420)`|
+            |`(720, 720)`|
+        retry_pending
+            Whether to retry requests in case of pending thumbnail state.
+        """
+
+        return await self.handler.avatars.get_headshot(
+            self.user.id,
+            circular=circular,
+            format=format,
+            size=size,
+            retry_pending=retry_pending,
+        )

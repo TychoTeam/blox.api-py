@@ -40,3 +40,12 @@ The following undocumented user-related API endpoints are also supported.
 ```http
 GET https://apis.roblox.com/search-api/omni-search
 ```
+
+#### `thumbnails.roblox.com`
+
+```http
+GET https://thumbnails.roblox.com/v1/groups/icons
+GET https://thumbnails.roblox.com/v1/users/avatar
+GET https://thumbnails.roblox.com/v1/users/avatar-bust
+GET https://thumbnails.roblox.com/v1/users/avatar-headshot
+```

@@ -129,6 +129,7 @@ class WebHandler:
 
         self.users = WebUsers(self)
         self.groups = WebGroups(self)
+        self.avatars = WebAvatars(self)
 
     authenticated_user: Optional[User] = None
 
@@ -243,19 +244,15 @@ class WebUsers(WebModule):
         id: int,
         /,
         *,
-        ids: None = ...,
-        names: None = ...,
         exclude_banned: bool = True,
     ) -> Optional[User]: ...
 
     @overload
     async def get(
         self,
-        id_or_name: None = ...,
+        ids: List[int],
         /,
         *,
-        ids: List[int],
-        names: None = ...,
         exclude_banned: bool = True,
     ) -> Dict[int, Optional[User]]: ...
 
@@ -265,37 +262,31 @@ class WebUsers(WebModule):
         name: str,
         /,
         *,
-        ids: None = ...,
-        names: None = ...,
         exclude_banned: bool = True,
     ) -> Optional[User]: ...
 
     @overload
     async def get(
         self,
-        id_or_name: None = ...,
+        names: List[str],
         /,
         *,
-        ids: None = ...,
-        names: List[str],
         exclude_banned: bool = True,
     ) -> Dict[str, Optional[User]]: ...
 
     @_ephemeral
     async def get(
         self,
-        id_or_name: Optional[Union[int, str]] = None,
+        ids_or_names: Union[int, str, List[int], List[str]],
         /,
         *,
-        ids: Optional[List[int]] = None,
-        names: Optional[List[str]] = None,
         exclude_banned: bool = True,
     ):
         """
         Get a single or multiple users using their user ID(s) or username(s).
 
-        - **Single User:** Returns a map of the requested IDs/usernames to their users, if found.
-        - **Multiple Users:** Returns the user, if found.
+        - **Single User:** Returns the user, if found.
+        - **Multiple Users:** Returns a map of the requested IDs/usernames to their users, if found.
 
         Parameters
         ----------
@@ -310,14 +301,20 @@ class WebUsers(WebModule):
         """
 
         single = False
-        if isinstance(id_or_name, int):
-            ids = [id_or_name]
+        ids = names = None
+        if isinstance(ids_or_names, int):
+            ids = [ids_or_names]
             single = True
-        elif isinstance(id_or_name, str):
-            names = [id_or_name]
+        elif isinstance(ids_or_names, str):
+            names = [ids_or_names]
             single = True
+        elif isinstance(next((v for v in ids_or_names), None), int):
+            ids = [id for id in ids_or_names if isinstance(id, int)]
+        else:
+            names = [n for n in ids_or_names if isinstance(n, str)]
 
         if ids:
+            ids = list(set(ids))
             users = [
                 User(self._handler, u)
                 for u in self._handle(
@@ -346,6 +343,7 @@ class WebUsers(WebModule):
             return map
 
         if names:
+            names = list(set(names))
             users = [
                 (u["requestedUsername"], User(self._handler, u))
                 for u in self._handle(
@@ -518,7 +516,7 @@ class WebGroups(WebModule):
     @_ephemeral
     async def get(self, id: int, /) -> Optional[Group]:
         """
-        Get a group using its ID. Authentication is required to access the group's shout.
+        Get a group using its ID.
 
         Parameters
         ----------
@@ -673,6 +671,130 @@ class WebGroups(WebModule):
         return None
 
     @_ephemeral
+    async def get_icons(
+        self,
+        ids: List[int],
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP"] = "PNG",
+        size: Union[
+            Tuple[Literal[150], Literal[150]],
+            Tuple[Literal[420], Literal[420]],
+        ] = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ) -> Dict[int, Optional[Thumbnail]]:
+        """
+        Get group icon thumbnails.
+
+        Parameters
+        ----------
+        ids
+            The Roblox group IDs.
+        circular
+            Whether the generated thumbnails should be circular.
+        format
+            The thumbnails' image media type.
+        size
+            The thumbnails' image dimensions.
+
+            | Supported |
+            |-|
+            |`(150, 150)`|
+            |`(420, 420)`|
+        retry_pending
+            Whether to retry requests in case of any pending thumbnail state.
+        """
+
+        map: Dict[int, Optional[Thumbnail]] = {id: None for id in ids}
+        has_pending = False
+
+        if data := (
+            (
+                self._handle(
+                    await self._requests.get(
+                        "thumbnails",
+                        f"/v1/groups/icons",
+                        params={
+                            "groupIds": list(map.keys()),
+                            "size": f"{size[0]}x{size[1]}",
+                            "format": format,
+                            "isCircular": circular,
+                        },
+                    ),
+                    web_types.v1_ThumbnailResponse,
+                )
+            )["data"]
+        ):
+            for thumbnail_data in data:
+                thumbnail = Thumbnail(
+                    self._handler,
+                    data=thumbnail_data,
+                    type=ThumbnailType.GroupIcon,
+                    circular=circular,
+                    format=format,
+                    size=size,
+                )
+                if thumbnail.state == ThumbnailState.Pending:
+                    has_pending = True
+
+                map[thumbnail.id] = thumbnail
+
+        if not retry_pending or not has_pending:
+            return map
+
+        await asyncio.sleep(pow(_attempt, 2))
+        return await self.get_icons(
+            ids, circular=circular, format=format, size=size, _attempt=_attempt + 1
+        )
+
+    @_ephemeral
+    async def get_icon(
+        self,
+        id: int,
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP"] = "PNG",
+        size: Union[
+            Tuple[Literal[150], Literal[150]],
+            Tuple[Literal[420], Literal[420]],
+        ] = (150, 150),
+        retry_pending: bool = True,
+    ) -> Optional[Thumbnail]:
+        """
+        Get a group icon thumbnail.
+
+        Parameters
+        ----------
+        id
+            The Roblox group ID.
+        circular
+            Whether the generated thumbnail should be circular.
+        format
+            The thumbnail image media type.
+        size
+            The thumbnail image dimensions.
+
+            | Supported |
+            |-|
+            |`(150, 150)`|
+            |`(420, 420)`|
+        retry_pending
+            Whether to retry requests in case of pending thumbnail state.
+        """
+
+        thumbnails = await self.get_icons(
+            [id],
+            circular=circular,
+            format=format,
+            size=size,
+            retry_pending=retry_pending,
+        )
+        return thumbnails.get(id)
+
+    @_ephemeral
     async def get_guest_role(self, id: int):
         """
         Get a group's guest role using the group ID.
@@ -770,3 +892,430 @@ class WebGroups(WebModule):
             page_handler=page_handler,
             exceptions={1: GroupNotFound, 35: InsufficientPermissions},
         )
+
+
+_AvatarFullSize = Union[
+    Tuple[Literal[30], Literal[30]],
+    Tuple[Literal[48], Literal[48]],
+    Tuple[Literal[60], Literal[60]],
+    Tuple[Literal[75], Literal[75]],
+    Tuple[Literal[100], Literal[100]],
+    Tuple[Literal[110], Literal[110]],
+    Tuple[Literal[140], Literal[140]],
+    Tuple[Literal[150], Literal[150]],
+    Tuple[Literal[150], Literal[200]],
+    Tuple[Literal[180], Literal[180]],
+    Tuple[Literal[250], Literal[250]],
+    Tuple[Literal[352], Literal[352]],
+    Tuple[Literal[420], Literal[420]],
+    Tuple[Literal[720], Literal[720]],
+]
+
+
+_AvatarBustSize = Union[
+    Tuple[Literal[48], Literal[48]],
+    Tuple[Literal[50], Literal[50]],
+    Tuple[Literal[60], Literal[60]],
+    Tuple[Literal[75], Literal[75]],
+    Tuple[Literal[100], Literal[100]],
+    Tuple[Literal[150], Literal[150]],
+    Tuple[Literal[180], Literal[180]],
+    Tuple[Literal[352], Literal[352]],
+    Tuple[Literal[420], Literal[420]],
+]
+
+_AvatarHeadshotSize = Union[
+    Tuple[Literal[48], Literal[48]],
+    Tuple[Literal[50], Literal[50]],
+    Tuple[Literal[60], Literal[60]],
+    Tuple[Literal[75], Literal[75]],
+    Tuple[Literal[100], Literal[100]],
+    Tuple[Literal[110], Literal[110]],
+    Tuple[Literal[150], Literal[150]],
+    Tuple[Literal[180], Literal[180]],
+    Tuple[Literal[352], Literal[352]],
+    Tuple[Literal[420], Literal[420]],
+    Tuple[Literal[720], Literal[720]],
+]
+
+
+class WebAvatars(WebModule):
+    """
+    Interact with Roblox Avatar Web APIs.
+    """
+
+    def __init__(self, handler: WebHandler):
+        super().__init__(handler)
+
+    @overload
+    async def get_full(
+        self,
+        id: int,
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP", "JPEG"] = "PNG",
+        size: _AvatarFullSize = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ) -> Optional[Thumbnail]: ...
+
+    @overload
+    async def get_full(
+        self,
+        ids: List[int],
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP", "JPEG"] = "PNG",
+        size: _AvatarFullSize = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ) -> Dict[int, Optional[Thumbnail]]: ...
+
+    @_ephemeral
+    async def get_full(
+        self,
+        id_or_ids: Union[int, List[int]],
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP", "JPEG"] = "PNG",
+        size: _AvatarFullSize = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ):
+        """
+        Get a single or multiple users' full avatar thumbnails using their user ID(s).
+
+        - **Single User:** Returns the user's avatar thumbnail, if found.
+        - **Multiple Users:** Returns a map of the requested IDs/usernames to their avatar thumbnails, if found.
+
+        Parameters
+        ----------
+        id
+            The Roblox user ID.
+        ids
+            The Roblox user IDs.
+        circular
+            Whether the generated thumbnails should be circular.
+        format
+            The thumbnails' image media type.
+        size
+            The thumbnails' image dimensions.
+
+            | Supported |
+            |-|
+            |`(30, 30)`|
+            |`(48, 48)`|
+            |`(60, 60)`|
+            |`(75, 75)`|
+            |`(100, 100)`|
+            |`(110, 110)`|
+            |`(140, 140)`|
+            |`(150, 150)`|
+            |`(150, 200)`|
+            |`(180, 180)`|
+            |`(250, 250)`|
+            |`(352, 352)`|
+            |`(420, 420)`|
+            |`(720, 720)`|
+        retry_pending
+            Whether to retry requests in case of any pending thumbnail state.
+        """
+
+        single = isinstance(id_or_ids, int)
+        ids = [id_or_ids] if single else id_or_ids
+
+        map: Dict[int, Optional[Thumbnail]] = {id: None for id in ids}
+        has_pending = False
+
+        if data := (
+            (
+                self._handle(
+                    await self._requests.get(
+                        "thumbnails",
+                        f"/v1/users/avatar",
+                        params={
+                            "userIds": list(map.keys()),
+                            "size": f"{size[0]}x{size[1]}",
+                            "format": format,
+                            "isCircular": circular,
+                        },
+                    ),
+                    web_types.v1_ThumbnailResponse,
+                )
+            )["data"]
+        ):
+            for thumbnail_data in data:
+                thumbnail = Thumbnail(
+                    self._handler,
+                    data=thumbnail_data,
+                    type=ThumbnailType.AvatarFull,
+                    circular=circular,
+                    format=format,
+                    size=size,
+                )
+                if thumbnail.state == ThumbnailState.Pending:
+                    has_pending = True
+
+                map[thumbnail.id] = thumbnail
+
+        if retry_pending and has_pending:
+            await asyncio.sleep(pow(_attempt, 2))
+            return await self.get_full(
+                ids,
+                circular=circular,
+                format=format,
+                size=size,
+                retry_pending=retry_pending,
+                _attempt=_attempt + 1,
+            )
+
+        return map[ids[0]] if single else map
+
+    @overload
+    async def get_bust(
+        self,
+        id: int,
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP"] = "PNG",
+        size: _AvatarBustSize = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ) -> Optional[Thumbnail]: ...
+
+    @overload
+    async def get_bust(
+        self,
+        ids: List[int],
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP"] = "PNG",
+        size: _AvatarBustSize = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ) -> Dict[int, Optional[Thumbnail]]: ...
+
+    @_ephemeral
+    async def get_bust(
+        self,
+        id_or_ids: Union[int, List[int]],
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP"] = "PNG",
+        size: _AvatarBustSize = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ):
+        """
+        Get a single or multiple users' avatar bust thumbnails using their user ID(s).
+
+        - **Single User:** Returns the user's avatar thumbnail, if found.
+        - **Multiple Users:** Returns a map of the requested IDs/usernames to their avatar thumbnails, if found.
+
+        Parameters
+        ----------
+        id
+            The Roblox user ID.
+        ids
+            The Roblox user IDs.
+        circular
+            Whether the generated thumbnails should be circular.
+        format
+            The thumbnails' image media type.
+        size
+            The thumbnails' image dimensions.
+
+            | Supported |
+            |-|
+            |`(48, 48)`|
+            |`(50, 50)`|
+            |`(60, 60)`|
+            |`(75, 75)`|
+            |`(100, 100)`|
+            |`(150, 150)`|
+            |`(180, 180)`|
+            |`(352, 352)`|
+            |`(420, 420)`|
+        retry_pending
+            Whether to retry requests in case of any pending thumbnail state.
+        """
+
+        single = isinstance(id_or_ids, int)
+        ids = [id_or_ids] if single else id_or_ids
+
+        map: Dict[int, Optional[Thumbnail]] = {id: None for id in ids}
+        has_pending = False
+
+        if data := (
+            (
+                self._handle(
+                    await self._requests.get(
+                        "thumbnails",
+                        f"/v1/users/avatar-bust",
+                        params={
+                            "userIds": list(map.keys()),
+                            "size": f"{size[0]}x{size[1]}",
+                            "format": format,
+                            "isCircular": circular,
+                        },
+                    ),
+                    web_types.v1_ThumbnailResponse,
+                )
+            )["data"]
+        ):
+            for thumbnail_data in data:
+                thumbnail = Thumbnail(
+                    self._handler,
+                    data=thumbnail_data,
+                    type=ThumbnailType.AvatarBust,
+                    circular=circular,
+                    format=format,
+                    size=size,
+                )
+                if thumbnail.state == ThumbnailState.Pending:
+                    has_pending = True
+
+                map[thumbnail.id] = thumbnail
+
+        if retry_pending and has_pending:
+            await asyncio.sleep(pow(_attempt, 2))
+            return await self.get_bust(
+                ids,
+                circular=circular,
+                format=format,
+                size=size,
+                retry_pending=retry_pending,
+                _attempt=_attempt + 1,
+            )
+
+        return map[ids[0]] if single else map
+
+    @overload
+    async def get_headshot(
+        self,
+        id: int,
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP", "JPEG"] = "PNG",
+        size: _AvatarHeadshotSize = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ) -> Optional[Thumbnail]: ...
+
+    @overload
+    async def get_headshot(
+        self,
+        ids: List[int],
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP", "JPEG"] = "PNG",
+        size: _AvatarHeadshotSize = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ) -> Dict[int, Optional[Thumbnail]]: ...
+
+    @_ephemeral
+    async def get_headshot(
+        self,
+        id_or_ids: Union[int, List[int]],
+        /,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP", "JPEG"] = "PNG",
+        size: _AvatarHeadshotSize = (150, 150),
+        retry_pending: bool = True,
+        _attempt: int = 0,
+    ):
+        """
+        Get a single or multiple users' avatar headshot thumbnails using their user ID(s).
+
+        - **Single User:** Returns the user's avatar thumbnail, if found.
+        - **Multiple Users:** Returns a map of the requested IDs/usernames to their avatar thumbnails, if found.
+
+        Parameters
+        ----------
+        id
+            The Roblox user ID.
+        ids
+            The Roblox user IDs.
+        circular
+            Whether the generated thumbnails should be circular.
+        format
+            The thumbnails' image media type.
+        size
+            The thumbnails' image dimensions.
+
+            | Supported |
+            |-|
+            |`(48, 48)`|
+            |`(50, 50)`|
+            |`(60, 60)`|
+            |`(75, 75)`|
+            |`(100, 100)`|
+            |`(110, 110)`|
+            |`(150, 150)`|
+            |`(180, 180)`|
+            |`(352, 352)`|
+            |`(420, 420)`|
+            |`(720, 720)`|
+        retry_pending
+            Whether to retry requests in case of any pending thumbnail state.
+        """
+
+        single = isinstance(id_or_ids, int)
+        ids = [id_or_ids] if single else id_or_ids
+
+        map: Dict[int, Optional[Thumbnail]] = {id: None for id in ids}
+        has_pending = False
+
+        if data := (
+            (
+                self._handle(
+                    await self._requests.get(
+                        "thumbnails",
+                        f"/v1/users/avatar-headshot",
+                        params={
+                            "userIds": list(map.keys()),
+                            "size": f"{size[0]}x{size[1]}",
+                            "format": format,
+                            "isCircular": circular,
+                        },
+                    ),
+                    web_types.v1_ThumbnailResponse,
+                )
+            )["data"]
+        ):
+            for thumbnail_data in data:
+                thumbnail = Thumbnail(
+                    self._handler,
+                    data=thumbnail_data,
+                    type=ThumbnailType.AvatarHeadshot,
+                    circular=circular,
+                    format=format,
+                    size=size,
+                )
+                if thumbnail.state == ThumbnailState.Pending:
+                    has_pending = True
+
+                map[thumbnail.id] = thumbnail
+
+        if retry_pending and has_pending:
+            await asyncio.sleep(pow(_attempt, 2))
+            return await self.get_headshot(
+                ids,
+                circular=circular,
+                format=format,
+                size=size,
+                retry_pending=retry_pending,
+                _attempt=_attempt + 1,
+            )
+
+        return map[ids[0]] if single else map

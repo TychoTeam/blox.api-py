@@ -173,7 +173,6 @@ class Requests:
             )
 
         try:
-            print(method, url, "?", kwargs.get("params"))
             response = await self._session.request(
                 method,
                 url,

@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Literal, Optional, Tuple, Union
 from blox.api_types.web_types.groups import v1_GroupMember
 from blox.utility import SortOrder, PageIterator
 from .users import MinimalUser, User
+from .thumbnails import Thumbnail
 from blox.exceptions import *
 from datetime import datetime
 import dateutil
@@ -45,6 +46,40 @@ class MinimalGroup:
         """
 
         return await self._handler.groups.get_roles(self.id)
+
+    async def get_icon(
+        self,
+        *,
+        circular: bool = False,
+        format: Literal["PNG", "WebP"] = "PNG",
+        size: Union[
+            Tuple[Literal[150], Literal[150]],
+            Tuple[Literal[420], Literal[420]],
+        ] = (150, 150),
+        retry_pending: bool = True,
+    ) -> Optional[Thumbnail]:
+        """
+        Get the group's icon thumbnail.
+
+        Parameters
+        ----------
+        circular
+            Whether the generated thumbnail should be circular.
+        format
+            The thumbnail image media type.
+        size
+            The thumbnail image dimensions.
+        retry_pending
+            Whether to retry requests in case of pending thumbnail state.
+        """
+
+        return await self._handler.groups.get_icon(
+            self.id,
+            circular=circular,
+            format=format,
+            size=size,
+            retry_pending=retry_pending,
+        )
 
     def name_history(
         self,
